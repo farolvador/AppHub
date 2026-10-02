@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Tracker">
+<title>Tracker</title>
+<style>
+:root{color-scheme:light dark;--bg:#f5f5f3;--cd:#fff;--tx:#1b1b1b;--mu:#777;--ac:#2563eb;--bd:#e2e2de;--bad:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#111;--cd:#1c1c1e;--tx:#f2f2f2;--mu:#9a9a9a;--bd:#333;--ac:#5b9bff}}
+*{box-sizing:border-box}body{margin:0;font:16px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:520px;margin:auto;padding:12px}.c{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+h3{margin:0 0 8px;font-size:13px;color:var(--mu);text-transform:uppercase;letter-spacing:.04em}
+.r{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;gap:8px}.b{font-size:26px;font-weight:600}.m{color:var(--mu);font-size:13px}
+input{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);margin:3px 0}
+button{font:inherit;padding:10px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff}button.g{background:none;color:var(--mu);padding:4px 8px}
+.t{display:flex;gap:6px;margin-bottom:12px}.t button{flex:1;background:var(--cd);color:var(--tx);border:1px solid var(--bd)}.t .on{background:var(--ac);color:#fff}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.neg{color:var(--bad)}code{font-size:12px;word-break:break-all}
+</style></head><body><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<script>
+const K='tracker.v1',SC=['Files.ReadWrite'];
+let S=JSON.parse(localStorage.getItem(K)||'null')||{set:{cal:2050,pro:160,start:'',goal:''},meals:[],weights:[],q:[],cfg:{cid:'',path:'WeightLog.xlsx'}};
+let tab='t',msg='',pca,busy=0;
+const pad=n=>String(n).padStart(2,'0'),iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()),today=()=>iso(new Date());
+const add=(s,n)=>{const[y,m,d]=s.split('-').map(Number);return iso(new Date(y,m-1,d+n))};
+const ser=s=>{const[y,m,d]=s.split('-').map(Number);return Math.round((Date.UTC(y,m-1,d)-Date.UTC(1899,11,30))/864e5)};
+const fs=n=>new Date(Date.UTC(1899,11,30)+Math.floor(n)*864e5).toISOString().slice(0,10);
+const uid=()=>crypto.randomUUID(),sum=(a,k)=>a.reduce((x,m)=>x+(+m[k]||0),0),avg=a=>a.length?sum(a.map(w=>({w})),'w')/a.length:null;
+const fm=(x,d=0)=>x==null||x===''?'–':(+x).toFixed(d),E=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ev=s=>{s=String(s).trim();if(!s)return 0;if(!/^[\d+\-*/().\s]+$/.test(s))return NaN;try{return Math.round(Function('return('+s+')')()*10)/10}catch(e){return NaN}};
+const save=()=>localStorage.setItem(K,JSON.stringify(S));
+function stats(){const t=today(),mw=S.meals.filter(m=>m.d>=add(t,-7)&&m.d<t),days=f=>new Set(mw.filter(f).map(m=>m.d)).size;
+ const dc=days(()=>1),dp=days(m=>m.p>0),W=S.weights,cur=W.filter(w=>w.d>=add(t,-6)&&w.d<=t).map(w=>w.w),pri=W.filter(w=>w.d>=add(t,-13)&&w.d<=add(t,-7)).map(w=>w.w);
+ const ca=avg(cur),pa=avg(pri),last=[...W].sort((a,b)=>a.d<b.d?-1:1).pop();
+ return{ac:dc?sum(mw,'c')/dc:null,ap:dp?sum(mw,'p')/dp:null,dc,dp,ca,pa,nc:cur.length,np:pri.length,chg:ca!=null&&pa!=null?pa-ca:null,last}}
+function render(){const T=S.set,t=today(),st=stats(),el=$=>document.querySelector($);
+ let h=`<div class=t>${[['t','Today'],['w','Weight'],['s','Settings']].map(([k,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</div>`;
+ if(tab=='t'){const sel=window.sel||t,dm=S.meals.filter(m=>m.d===sel),tc=sum(dm,'c'),tp=sum(dm,'p');
+  const row=(l,v,tg)=>`<div class=r><span>${l}</span><span><b class=b>${fm(v)}</b> <span class=m>/ ${tg} · <span class="${tg-v<0?'neg':''}">${fm(tg-v)} left</span></span></span></div><div class=bar><i style="width:${Math.min(100,v/tg*100)}%"></i></div>`;
+  h+=`<div class=c><h3>${sel==t?'Today':sel}</h3>${row('Calories',tc,T.cal)}<div style="height:10px"></div>${row('Protein',tp,T.pro)}</div>
+  <div class=c><h3>Add entry</h3><input id=mn placeholder="Meal (optional)"><div class=g2><input id=mc placeholder="Calories (650+170)" inputmode=text><input id=mp placeholder="Protein" inputmode=text></div><input id=md type=date value="${sel}" onchange="window.sel=this.value;render()"><button onclick="addMeal()" style="width:100%;margin-top:6px">Add</button></div>
+  <div class=c><h3>Entries</h3>${dm.map(m=>`<div class=r><span>${E(m.n||'–')}</span><span>${fm(m.c)} · ${fm(m.p)}g <button class=g onclick="delMeal('${m.id}')">✕</button></span></div>`).join('')||'<span class=m>None yet</span>'}</div>
+  <div class=c><h3>7 full days before today (logged days only)</h3><div class=r><span>Avg calories</span><b>${fm(st.ac)} <span class=m>${st.dc} d</span></b></div><div class=r><span>Avg protein</span><b>${fm(st.ap)} <span class=m>${st.dp} d</span></b></div></div>`}
+ if(tab=='w'){const sel=window.wsel||t,Ls=[...S.weights].sort((a,b)=>a.d<b.d?1:-1).slice(0,14);
+  h+=`<div class=c><h3>Weight</h3><div class=r><span>7-day avg (incl. today)</span><b>${fm(st.ca,1)} <span class=m>${st.nc} in</span></b></div><div class=r><span>Prior week avg</span><b>${fm(st.pa,1)} <span class=m>${st.np} in</span></b></div><div class=r><span>Change vs prior (loss +)</span><b>${fm(st.chg,1)}</b></div><div class=r><span>Current (${st.last?st.last.d:'–'})</span><b>${fm(st.last&&st.last.w,1)}</b></div><div class=r><span>To goal</span><b>${st.last&&T.goal?fm(st.last.w-T.goal,1):'–'}</b></div></div>
+  <div class=c><h3>Log weight</h3><input id=wd type=date value="${sel}" onchange="window.wsel=this.value"><input id=wv placeholder="Weight" inputmode=decimal><button onclick="addW()" style="width:100%;margin-top:6px">Save (replaces that day)</button></div>
+  <div class=c><h3>Recent</h3>${Ls.map(w=>`<div class=r><span>${w.d}</span><span>${fm(w.w,1)} <button class=g onclick="delW('${w.d}')">✕</button></span></div>`).join('')}</div>`}
+ if(tab=='s'){h+=`<div class=c><h3>Targets</h3>${[['cal','Daily calories'],['pro','Daily protein'],['start','Starting weight'],['goal','Goal weight']].map(([k,l])=>`<label class=m>${l}<input id=s_${k} inputmode=decimal value="${T[k]??''}"></label>`).join('')}<button onclick="saveSet()" style="width:100%;margin-top:6px">Save targets</button></div>
+  <div class=c><h3>OneDrive</h3><label class=m>App (client) ID<input id=cid value="${E(S.cfg.cid)}"></label><label class=m>File path in OneDrive<input id=pth value="${E(S.cfg.path)}"></label><button onclick="connect()">Connect</button> <button onclick="sync()">Sync now</button>
+  <p class=m>Setup: host this file (e.g. Netlify Drop). In portal.azure.com → App registrations → New, accounts = personal Microsoft only, platform = Single-page application, redirect URI = <code>${E(location.origin+location.pathname)}</code>, API permission Files.ReadWrite. Paste the client ID, tap Connect.</p></div>`}
+ h+=`<p class=m style="text-align:center">${E(msg)}${S.q.length?' · '+S.q.length+' pending':''}</p>`;document.getElementById('app').innerHTML=h}
+function addMeal(){const c=ev(mc.value),p=ev(mp.value);if(isNaN(c)||isNaN(p)||(!c&&!p)){alert('Enter calories and/or protein (numbers or sums like 650+170).');return}
+ const m={id:uid(),d:md.value||today(),n:mn.value.trim(),c,p};S.meals.push(m);S.q.push({t:'am',m});save();render();sync()}
+function delMeal(id){const m=S.meals.find(x=>x.id==id);S.meals=S.meals.filter(x=>x.id!=id);S.q.push({t:'dm',m});save();render();sync()}
+function addW(){const w=parseFloat(wv.value),d=wd.value||today();if(!(w>0))return;S.weights=S.weights.filter(x=>x.d!=d).concat({d,w});S.q.push({t:'uw',d,w});save();render();sync()}
+function delW(d){S.weights=S.weights.filter(x=>x.d!=d);S.q.push({t:'dw',d});save();render();sync()}
+function saveSet(){const n={cal:'Daily Calorie Target',pro:'Daily Protein Target',start:'Starting Weight',goal:'Goal Weight'};for(const k in n){const v=parseFloat(document.getElementById('s_'+k).value);if(!isNaN(v)&&v!==S.set[k]){S.set[k]=v;S.q.push({t:'us',name:n[k],val:v})}}save();render();sync()}
+function initPca(){if(!S.cfg.cid||!window.msal)return;pca=new msal.PublicClientApplication({auth:{clientId:S.cfg.cid,authority:'https://login.microsoftonline.com/consumers',redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage'}})}
+async function connect(){S.cfg.cid=cid.value.trim();S.cfg.path=pth.value.trim().replace(/^\//,'')||'WeightLog.xlsx';save();initPca();if(pca)await pca.loginRedirect({scopes:SC})}
+async function token(){const a=pca.getAllAccounts()[0];if(!a){await pca.loginRedirect({scopes:SC});throw 'Signing in…'}
+ try{return(await pca.acquireTokenSilent({scopes:SC,account:a})).accessToken}catch(e){await pca.acquireTokenRedirect({scopes:SC});throw 'Signing in…'}}
+async function g(method,url,body){const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/root:/'+encodeURI(S.cfg.path)+':/workbook/'+url,{method,headers:{Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,100));return r.status==204?null:r.json()}
+const rows=async n=>(await g('GET','tables/'+n+'/rows?$top=5000')).value;
+const same=(v,m)=>v[4]==m.id||(v[0]!==''&&fs(v[0])==m.d&&(v[1]||'')==(m.n||'')&&+v[2]==m.c&&+v[3]==m.p);
+async function run(o){
+ if(o.t=='am')await g('POST','tables/tblMeals/rows/add',{index:null,values:[[ser(o.m.d),o.m.n,o.m.c,o.m.p,o.m.id]]});
+ if(o.t=='dm'){const r=(await rows('tblMeals')).find(x=>same(x.values[0],o.m));if(r)await g('DELETE',`tables/tblMeals/rows/itemAt(index=${r.index})`)}
+ if(o.t=='uw'||o.t=='dw'){const rs=(await rows('tblWeight')).filter(x=>x.values[0][0]!==''&&fs(x.values[0][0])==o.d).sort((a,b)=>b.index-a.index);for(const r of rs)await g('DELETE',`tables/tblWeight/rows/itemAt(index=${r.index})`);
+  if(o.t=='uw')await g('POST','tables/tblWeight/rows/add',{index:null,values:[[ser(o.d),o.w,'',uid()]]})}
+ if(o.t=='us'){const r=(await rows('tblSettings')).find(x=>x.values[0][0]==o.name);if(r)await g('PATCH',`tables/tblSettings/rows/itemAt(index=${r.index})`,{values:[[o.name,o.val,r.values[0][2]]]})}}
+async function pull(){const[m,w,s]=await Promise.all(['tblMeals','tblWeight','tblSettings'].map(rows));
+ S.meals=m.map(r=>r.values[0]).filter(v=>v[0]!=='').map(v=>({id:v[4]||uid(),d:fs(v[0]),n:v[1]||'',c:+v[2]||0,p:+v[3]||0}));
+ const wm={};w.map(r=>r.values[0]).filter(v=>v[0]!==''&&v[1]!=='').forEach(v=>wm[fs(v[0])]=+v[1]);S.weights=Object.entries(wm).map(([d,w])=>({d,w}));
+ const k={'Daily Calorie Target':'cal','Daily Protein Target':'pro','Starting Weight':'start','Goal Weight':'goal'};s.forEach(r=>{const v=r.values[0];if(k[v[0]])S.set[k[v[0]]]=+v[1]})}
+async function sync(){if(busy||!pca||!pca.getAllAccounts().length&&!S.cfg.cid)return;busy=1;msg='Syncing…';render();
+ try{while(S.q.length){await run(S.q[0]);S.q.shift();save()}await pull();msg='Synced '+new Date().toLocaleTimeString()}catch(e){msg='Sync issue: '+(e.message||e)}busy=0;save();render()}
+(async()=>{render();initPca();if(pca){try{await pca.handleRedirectPromise()}catch(e){msg=e.message}if(pca.getAllAccounts().length)sync()}
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()})})();
+</script></body></html>
